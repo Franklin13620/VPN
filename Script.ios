@@ -1,0 +1,417 @@
+! Seguimiento de proyecto de Redes II
+! Lo que realice solamente es quitar el enrrutamiento
+! EIGRP y agregar OSPF Multiare, asi del mismo modo
+! Todos los procolos vistos en Redes II estan actuivo
+! Excepto EIGRP
+
+! Border 
+router ospf 28
+ network 10.0.0.0 0.0.0.3 area 0
+ network 10.0.0.16 0.0.0.3 area 0
+ network 10.0.0.4 0.0.0.3 area 0
+ network 12.28.12.0 0.0.0.3 area 0
+ default-information originate 
+
+! CORE-1
+router ospf 28
+ network 192.168.1.0 0.0.0.3 area 1
+ network 192.168.2.0 0.0.0.3 area 1
+ network 192.168.3.0 0.0.0.3 area 1
+ network 192.168.4.0 0.0.0.3 area 1
+ network 10.0.0.0 0.0.0.3 area 0
+ network 10.0.0.8 0.0.0.3 area 0
+ network 12.28.12.0 0.0.0.3 area 0
+
+! CORE-2
+router ospf 28
+ network 10.0.0.8 0.0.0.3 area 0
+ network 10.0.0.16 0.0.0.3 area 0
+ network 10.0.0.12 0.0.0.3 area 0
+ network 10.0.0.20 0.0.0.3 area 2
+ network 10.0.0.24 0.0.0.3 area 2
+ network 12.28.12.0 0.0.0.3 area 0
+
+ ! CORE-3
+router ospf 28
+ network 192.168.9.0 0.0.0.255 area 3
+ network 192.168.10.0 0.0.0.255 area 3
+ network 192.168.11.0 0.0.0.255 area 3
+ network 192.168.12.0 0.0.0.255 area 3
+ network 10.0.0.4 0.0.0.3 area 0
+ network 10.0.0.12 0.0.0.3 area 0
+ network 12.28.12.0 0.0.0.3 area 0
+
+!  SWM-1
+router ospf 28
+ network 192.168.5.0 0.0.0.255 area 2
+ network 192.168.6.0 0.0.0.255 area 2
+ network 192.168.7.0 0.0.0.255 area 2
+ network 192.168.8.0 0.0.0.255 area 2
+ network 10.0.0.20 0.0.0.3 area 2
+
+ !  SWM-2
+router ospf 28
+ network 192.168.5.0 0.0.0.255 area 2
+ network 192.168.6.0 0.0.0.255 area 2
+ network 192.168.7.0 0.0.0.255 area 2
+ network 192.168.8.0 0.0.0.255 area 2
+ network 10.0.0.24 0.0.0.3 area 2
+
+!  NAT
+ip nat pool Eco 206.167.13.1 206.167.13.10 netmask 255.255.255.224
+ip nat inside source list 2 pool Eco overload
+access-list 2 permit 192.168.0.0 0.0.255.255
+interface g0/1
+ip nat outside
+interface g0/0
+ip nat inside
+interface g0/2
+ip nat inside
+
+! TUNNEL GREE
+!!!CORE-1
+interface tunnel 0
+tunnel source g0/1
+tunnel destination 10.0.0.14 ->.
+tunnel mode gre ip
+ip address 12.28.12.1 255.255.255.252
+
+license boot module c2900 technology-package securityk9
+!---CRYPTO MAP
+crypto isakmp enable
+
+crypto isakmp policy 10
+encryption aes 256
+authentication pre-share
+group 2
+lifetime 7200
+
+crypto ipsec transform-set FRAN esp-aes 256 esp-sha-hmac
+crypto ipsec security-association lifetime seconds 3600
+
+!---ACL
+access-list 101 permit gre host 10.0.0.9 host 10.0.0.14
+
+
+!---mapa crypto Nacional
+crypto map FRAN 10 ipsec-isakmp
+set peer 10.0.0.14 ->.
+set pfs group2
+set security-association lifetime seconds 1800
+set transform-set FRAN
+match address 101
+interface g0/1
+crypto map FRAN
+
+
+
+!!!CORE-3
+interface tunnel 0
+tunnel source S0/0/1
+tunnel destination 10.0.0.9
+tunnel mode gre ip
+ip address 12.28.12.2 255.255.255.252
+
+license boot module c2900 technology-package securityk9
+
+!---CRYPTO MAP
+crypto isakmp enable
+
+crypto isakmp policy 10
+encryption aes 256
+authentication pre-share
+group 2
+lifetime 7200
+
+crypto ipsec transform-set FRAN esp-aes 256 esp-sha-hmac
+crypto ipsec security-association lifetime seconds 3600
+
+!---ACL
+access-list 101 permit gre host 10.0.0.14 host 10.0.0.9
+
+
+!---mapa crypto Eco
+crypto map FRAN 10 ipsec-isakmp
+set peer 10.0.0.9
+set pfs group2
+set security-association lifetime seconds 1800
+set transform-set FRAN
+match address 101
+interface S0/0/1
+crypto map FRAN
+
+
+
+! ACL FILTRADO DE TRAFICO
+!!! Las vlans entre si no se pueden ver solo las que estan con el mismo nombrer
+!!!Ejemplo: Administracion con Administracion se pueden ver. SOLO SOPORTE TIENE ACCESO A TODO
+! CORE-1
+ip access-list extended 103
+permit udp any eq bootpc any eq bootps
+permit ip 192.168.2.0 0.0.0.255 any
+permit tcp 192.168.1.0 0.0.0.255 host 80.80.80.2 eq 80
+permit tcp 192.168.3.0 0.0.0.255 host 80.80.80.2 eq 80
+permit tcp 192.168.4.0 0.0.0.255 host 80.80.80.2 eq 80
+permit ip 192.168.1.0 0.0.0.255 host 192.168.2.100
+permit ip 192.168.3.0 0.0.0.255 host 192.168.2.100
+permit ip 192.168.4.0 0.0.0.255 host 192.168.2.100
+permit ip 192.168.1.0 0.0.0.255 192.168.5.0 0.0.0.255
+permit ip 192.168.1.0 0.0.0.255 192.168.9.0 0.0.0.255
+permit ip 192.168.3.0 0.0.0.255 192.168.7.0 0.0.0.255
+permit ip 192.168.3.0 0.0.0.255 192.168.11.0 0.0.0.255
+permit ip 192.168.4.0 0.0.0.255 192.168.8.0 0.0.0.255
+permit ip 192.168.4.0 0.0.0.255 192.168.12.0 0.0.0.255
+deny ip any any
+interface gi0/1
+ip access-group 103 out 
+interface gi0/0
+ip access-group 103 out
+interface gi0/2
+ip access-group 103 in  
+
+
+! CORE-2
+ip access-list extended 104
+permit udp any eq bootpc any eq bootps
+permit ip 192.168.6.0 0.0.0.255 any
+permit tcp 192.168.5.0 0.0.0.255 host 80.80.80.2 eq 80
+permit tcp 192.168.7.0 0.0.0.255 host 80.80.80.2 eq 80
+permit tcp 192.168.8.0 0.0.0.255 host 80.80.80.2 eq 80
+permit ip 192.168.5.0 0.0.0.255 192.168.1.0 0.0.0.255
+permit ip 192.168.5.0 0.0.0.255 192.168.9.0 0.0.0.255
+permit ip 192.168.7.0 0.0.0.255 192.168.3.0 0.0.0.255
+permit ip 192.168.7.0 0.0.0.255 192.168.11.0 0.0.0.255
+permit ip 192.168.8.0 0.0.0.255 192.168.4.0 0.0.0.255
+permit ip 192.168.8.0 0.0.0.255 192.168.12.0 0.0.0.255
+deny ip any any
+interface gi0/1
+ip access-group 103 out 
+interface s0/0/1
+ip access-group 103 out 
+interface s0/0/0
+ip access-group 103 out 
+interface gi0/0
+ip access-group 103 in
+interface gi0/2
+ip access-group 103 in  
+
+
+! CORE-3
+ip access-list extended 105
+permit udp any eq bootpc any eq bootps
+permit ip 192.168.10.0 0.0.0.255 any
+permit tcp 192.168.9.0 0.0.0.255 host 80.80.80.2 eq 80
+permit tcp 192.168.11.0 0.0.0.255 host 80.80.80.2 eq 80
+permit tcp 192.168.12.0 0.0.0.255 host 80.80.80.2 eq 80
+permit ip 192.168.9.0 0.0.0.255 host 192.168.10.100
+permit ip 192.168.11.0 0.0.0.255 host 192.168.10.100
+permit ip 192.168.12.0 0.0.0.255 host 192.168.10.100
+permit ip 192.168.9.0 0.0.0.255 192.168.5.0 0.0.0.255
+permit ip 192.168.9.0 0.0.0.255 192.168.1.0 0.0.0.255
+permit ip 192.168.11.0 0.0.0.255 192.168.7.0 0.0.0.255
+permit ip 192.168.11.0 0.0.0.255 192.168.3.0 0.0.0.255
+permit ip 192.168.12.0 0.0.0.255 192.168.8.0 0.0.0.255
+permit ip 192.168.12.0 0.0.0.255 192.168.4.0 0.0.0.255
+deny ip any any
+interface s0/0/1
+ip access-group 105 out 
+interface gi0/0
+ip access-group 105 out
+interface gi0/2
+ip access-group 105 in  
+
+! QoS
+! Creamis una política QoS para definir que las VLAN Administracion recibirán un ancho de 10Kbps 
+! Y las demas sera ocupado por las demas Vlans
+!de banda de 10Kbps (Shaping) y el restante será ocupado por las demás VLANs
+!! CORE-1
+ip access-list standard 2 
+permit 192.168.1.0 0.0.0.0
+
+class-map AdministracionMapQoS
+match access-group 2
+exit
+
+policy-map AdministracionPolicyQoS
+class AdministracionMapQoS
+bandwidth 10
+set precedence network
+exit
+
+int gi0/0
+service-policy output AdministracionPolicyQoS
+exit
+
+! Crear una política QoS con relación al tráfico generado en la infraestructura 
+! con los siguientes protocolos OSPF, icmp, http, y FTP para los routers donde 
+! están conectados las VLANs
+! NOTA: Una sola clase es mas que suficiente y mejoraremos la eficiencia.
+! Pero a menara de PoC hemos realizados las demas.
+
+class-map Trafico
+match protocol ospf
+match protocol icmp
+match protocol ftp
+exit
+
+class-map P_HTTP
+match protocol http
+exit
+
+class-map P_Remotoos
+match protocol ssh
+match protocol telnet
+exit
+
+policy-map QoS
+class Trafico
+set precedence 7
+class P_Remotoos
+set precedence 5
+class P_HTTP
+set precedence 3
+exit
+
+interface gi0/0
+service-policy output QoS
+exit
+
+
+!! SWM-1, SWM-2
+ip access-list standard 2 
+permit 192.168.5.0 0.0.0.0
+
+class-map AdministracionMapQoS
+match access-group 2
+exit
+
+policy-map AdministracionPolicyQoS
+class AdministracionMapQoS
+bandwidth 10
+set precedence network
+exit
+
+int gi0/1
+service-policy output AdministracionPolicyQoS
+exit
+! NOTA: Una sola clase es mas que suficiente y mejoraremos la eficiencia.
+! Pero a menara de PoC hemos realizados las demas.
+
+class-map Trafico
+match protocol ospf
+match protocol icmp
+match protocol ftp
+exit
+
+class-map P_HTTP
+match protocol http
+exit
+
+class-map P_Remotoos
+match protocol ssh
+match protocol telnet
+exit
+
+policy-map QoS
+class Trafico
+set precedence 7
+class P_Remotoos
+set precedence 5
+class P_HTTP
+set precedence 3
+exit
+
+interface gi0/1
+service-policy output QoS
+exit
+
+
+
+!! CORE-3
+ip access-list standard 2 
+permit 192.168.9.0 0.0.0.0
+
+class-map AdministracionMapQoS
+match access-group 2
+exit
+
+policy-map AdministracionPolicyQoS
+class AdministracionMapQoS
+bandwidth 10
+set precedence network
+exit
+
+int S0/0/1
+service-policy output AdministracionPolicyQoS
+exit
+! NOTA: Una sola clase es mas que suficiente y mejoraremos la eficiencia.
+! Pero a menara de PoC hemos realizados las demas.
+
+class-map Trafico
+match protocol ospf
+match protocol icmp
+match protocol ftp
+exit
+
+class-map P_HTTP
+match protocol http
+exit
+
+class-map P_Remotoos
+match protocol ssh
+match protocol telnet
+exit
+
+policy-map QoS
+class Trafico
+set precedence 7
+class P_Remotoos
+set precedence 5
+class P_HTTP
+bandwidth 50
+set ip dscp af31
+set precedence 3
+class icmp
+bandwidth 25
+set ip dscp af11
+exit
+
+
+interface S0/0/1
+service-policy output QoS
+exit
+
+
+
+! Servicios SysLog TFTP y SNMP
+! El servidor Syslog ya lo teniamos implementado
+! En los servidores Radius y Tacacs 
+! En este caso como estamos usando PKT no podemos obtener las copiar
+! Porque el emulador no los permite pero dejarmos constancia del script
+! como que si nuestra pc fisica fuera el servidor
+
+!! SNMP
+    ip access-list standard SNMP
+    permit 192.168.0.0 0.0.255.255
+
+    snmp-server view Gamers iso included
+    snmp-server group SMPGROUP v3 priv read Gamers access SNMP
+    snmp-server user LUIS SMPGROUP v3 auth sha luisp priv aes 128 luispp
+
+
+
+!! FTP
+    tftp:Respaldo-ISP
+    ip del servidor: 192.168.1.2
+    ip access-list standard PERMIT-ADMIN
+    permit 192.168.0.0 0.0.255.255
+
+    ! Para obtener las copias solo ejecutariamos
+    copy tftp:Backup-RoughinIt running-config
+
+
+
+
+
+
+

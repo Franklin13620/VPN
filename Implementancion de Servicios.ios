@@ -1,0 +1,23 @@
+! Servicios SysLog TFTP y SNMP
+! El servidor Syslog ya lo teniamos implementado
+! En los servidores Radius y Tacacs 
+! En este caso como estamos usando PKT no podemos obtener las copiar
+! Porque el emulador no los permite pero dejarmos constancia del script
+! como que si nuestra pc fisica fuera el servidor
+
+!! SNMP
+    ip access-list standard SNMP
+    permit 192.168.0.0 0.0.255.255
+
+    snmp-server view Gamers iso included
+    snmp-server group SMPGROUP v3 priv read Gamers access SNMP
+    snmp-server user LUIS SMPGROUP v3 auth sha luisp priv aes 128 luispp
+
+!! FTP
+    tftp:Respaldo-ISP
+    ip del servidor: 192.168.1.2
+    ip access-list standard PERMIT-ADMIN
+    permit 192.168.0.0 0.0.255.255
+
+    ! Para obtener las copias solo ejecutariamos
+    copy tftp:Backup-RoughinIt running-config
